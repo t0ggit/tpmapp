@@ -16,6 +16,13 @@ sudo DEBIAN_FRONTEND=noninteractive apt install -y \
     libtss2-dev \
     pkg-config \
     || { echo "Не удалось установить системные пакеты"; exit 1; }
+    
+# Добавляем официальный PPA от разработчиков TPM2
+sudo add-apt-repository ppa:tpm2-software/stable -y
+sudo apt update
+
+# Ставим свежие библиотеки (важно именно эти пакеты!)
+sudo apt install -y libtss2-fapi1 libtss2-esys-3.0.2-0 libtss2-mu-3.0.2-0 libtss2-tcti-device0 libtss2-tcti-mssim0 libtss2-tctildr0
 
 # 2. Создаём изолированное виртуальное окружение в домашней папке
 VENV_DIR="$PWD/tpmapp_venv"

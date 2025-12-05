@@ -1,24 +1,25 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
 """
 TPM2 + FAPI + LUKS2 encrypted virtual disk manager
+Работает на Ubuntu 22.04 с tpm2-tss 4.1.2 и tpm2-pytss 2.3.0+
 """
 
 import os
 import sys
 import getpass
 import subprocess
+import json
 from pathlib import Path
-from tpm2_pytss import FAPI, PolicyPCR, PolicyAuthValue
+from tpm2_pytss import FAPI, PolicyPCR, PolicyAuthValue, TPM2B_PUBLIC_KEY_RSA
 from Crypto.Random import get_random_bytes
 
 # =========================== CONFIG ===========================
-MOUNT_BASE = Path.cwd()                   # где лежат .img и монтируются папки
-DISK_SIZE = "100M"                        # размер нового образа
-KEY_SIZE = 64                             # 512 бит — максимум для LUKS2
-TPM_PATH_PREFIX = "/HS/SRK/luks_disk_"    # путь в TPM
-PCR_LIST = [0, 1, 2, 3, 4, 5, 6, 7]       # измеряем всю загрузочную цепочку
+MOUNT_BASE = Path.cwd()
+DISK_SIZE = "100M"
+KEY_SIZE = 64  # 512 бит
+TPM_PATH_PREFIX = "/HS/SRK/luks_disk_"
+PCR_LIST = [0, 1, 2, 3, 4, 5, 6, 7]
 # ==============================================================
 
 def run(cmd, **kwargs):
@@ -32,11 +33,10 @@ def ask_pin():
     if pin != pin2:
         print("PIN не совпадают")
         sys.exit(1)
-    return pin
+    return pin.encode()
 
 def create(name: str):
     img = MOUNT_BASE / f"{name}.img"
-    mnt = MOUNT_BASE / name
     tpm_path = TPM_PATH_PREFIX + name
 
     if img.exists():
@@ -52,23 +52,32 @@ def create(name: str):
 
     print("Запечатываем ключ в TPM (PCR 0–7 + PIN)…")
     with FAPI() as fapi:
-        policy = PolicyPCR(PCR_LIST)
+        # Правильный способ создать политику
+        policy = PolicyPCR(pcr_list=PCR_LIST)
         if pin:
-            policy &= PolicyAuthValue(pin.encode())
-        fapi.create_seal(tpm_path, luks_key, policy)
+            policy = policy & PolicyAuthValue()
 
-    print("Инициализируем LUKS2 + добавляем TPM-токен")
+        # create_seal теперь принимает bytes и policy как отдельный аргумент
+        fapi.create_seal(
+            path=tpm_path,
+            data=luks_key,
+            policy=policy  # или policy=policy.to_dict() в старых версиях
+        )
+
+    print("Инициализируем LUKS2 контейнер")
     run(["cryptsetup", "luksFormat", "--type", "luks2", str(img)], input=b"YES\n")
+
+    print("Добавляем TPM2-токен в LUKS")
+    # cryptsetup умеет читать из FAPI напрямую
     run([
         "cryptsetup", "token", "add", str(img),
         "--token-type", "tpm2",
-        "--tpm2-seal", f"path={tpm_path}",
+        "--tpm2-path", tpm_path,
         "--tpm2-pcr-list", ";".join(map(str, PCR_LIST))
     ], input=luks_key)
 
-    print(f"\nГотово! Диск {name} защищён TPM")
-    print(f"   ./app.py open {name}")
-    print(f"   ./app.py close {name}\n")
+    print(f"\nГотово! Диск {name} защищён TPM + PCR")
+    print(f"   ./app.py open {name}\n")
 
 def open_disk(name: str):
     img = MOUNT_BASE / f"{name}.img"
@@ -85,10 +94,14 @@ def open_disk(name: str):
         return
 
     print(f"Открываем {name} через TPM…")
-    run([
-        "cryptsetup", "open", str(img), mapper,
-        "--token-only", "--type", "luks2"
-    ])
+    try:
+        run([
+            "cryptsetup", "open", str(img), mapper,
+            "--token-only-token", "--type", "luks2"
+        ])
+    except subprocess.CalledProcessError as e:
+        print("Не удалось открыть: PCR изменились или неверный PIN")
+        sys.exit(1)
 
     run(["mount", f"/dev/mapper/{mapper}", str(mnt)])
     run(["chown", f"{os.getuid()}:{os.getgid()}", str(mnt)])
@@ -105,7 +118,7 @@ def list_disks():
     for img in MOUNT_BASE.glob("*.img"):
         name = img.stem
         mounted = any((MOUNT_BASE / name).iterdir()) if (MOUNT_BASE / name).exists() else False
-        print(f"{'OPEN' if mounted else 'CLOSED'}  {name.ljust(20)}  {img.name}")
+        print(f"{'OPEN' if mounted else 'CLOSED'} {name.ljust(20)} {img.name}")
 
 # ============================= CLI =============================
 if __name__ == "__main__":

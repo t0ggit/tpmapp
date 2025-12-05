@@ -7,7 +7,7 @@ set -e
 
 echo "=== TPM2 LUKS FAPI приложение — безопасная установка ==="
 
-# 1. Только системные пакеты, которые почти всегда уже есть
+# 1.0. Только системные пакеты, которые почти всегда уже есть
 echo "Устанавливаем только минимально необходимые системные пакеты..."
 sudo DEBIAN_FRONTEND=noninteractive apt update
 sudo DEBIAN_FRONTEND=noninteractive apt install -y \
@@ -16,13 +16,29 @@ sudo DEBIAN_FRONTEND=noninteractive apt install -y \
     libtss2-dev \
     pkg-config \
     || { echo "Не удалось установить системные пакеты"; exit 1; }
-    
-# Добавляем официальный PPA от разработчиков TPM2
-sudo add-apt-repository ppa:tpm2-software/stable -y
-sudo apt update
 
-# Ставим свежие библиотеки (важно именно эти пакеты!)
-sudo apt install -y libtss2-fapi1 libtss2-esys-3.0.2-0 libtss2-mu-3.0.2-0 libtss2-tcti-device0 libtss2-tcti-mssim0 libtss2-tctildr0
+# 1.1. Устанавливаем зависимости для сборки (если нет)
+sudo apt update
+sudo apt install -y autoconf automake libtool pkg-config gcc git libssl-dev
+
+# 1.2. Клонируем и собираем свежий tpm2-tss (4.1.2+ с FAPI 3.0)
+cd /tmp
+git clone https://github.com/tpm2-software/tpm2-tss.git
+cd tpm2-tss
+git checkout 4.1.2  # стабильная версия на 2025 год
+./bootstrap
+./configure --prefix=/usr --with-tctis=tcti-swtpm,tcti-device,tcti-mssim
+make -j$(nproc)
+sudo make install
+
+# 1.3. Собираем tpm2-tools (обновлённые, чтобы работали с новым TSS)
+cd /tmp
+git clone https://github.com/tpm2-software/tpm2-tools.git
+cd tpm2-tools
+./bootstrap
+./configure --prefix=/usr
+make -j$(nproc)
+sudo make install
 
 # 2. Создаём изолированное виртуальное окружение в домашней папке
 VENV_DIR="$PWD/tpmapp_venv"

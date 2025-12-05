@@ -17,22 +17,30 @@ sudo DEBIAN_FRONTEND=noninteractive apt install -y \
     pkg-config \
     || { echo "Не удалось установить системные пакеты"; exit 1; }
 
-# 1.1. Устанавливаем зависимости для сборки (если нет)
+# 1.1. Устанавливаем ВСЕ зависимости для сборки (теперь полный набор)
 sudo apt update
-sudo apt install -y autoconf automake libtool pkg-config gcc git libssl-dev
+sudo apt install -y autoconf automake libtool pkg-config gcc git libssl-dev autoconf-archive libtool-bin libgcrypt-dev doxygen graphviz
 
-# 1.2. Клонируем и собираем свежий tpm2-tss (4.1.2+ с FAPI 3.0)
+# 1.2. Клонируем и собираем tpm2-tss 4.1.2 (стабильная версия с FAPI 3.0+)
 cd /tmp
+rm -rf tpm2-tss  # очищаем, если был
 git clone https://github.com/tpm2-software/tpm2-tss.git
 cd tpm2-tss
-git checkout 4.1.2  # стабильная версия на 2025 год
+git checkout 4.1.2
+
+# 1.3. Запускаем bootstrap (теперь с полным набором макросов)
 ./bootstrap
-./configure --prefix=/usr --with-tctis=tcti-swtpm,tcti-device,tcti-mssim
+
+# 1.4. Конфигурируем (без лишних флагов, swtpm поддерживается по умолчанию)
+./configure --prefix=/usr
+
+# 1.5. Собираем и устанавливаем
 make -j$(nproc)
 sudo make install
 
-# 1.3. Собираем tpm2-tools (обновлённые, чтобы работали с новым TSS)
+# 1.6. Собираем обновлённые tpm2-tools (опционально, но рекомендуется)
 cd /tmp
+rm -rf tpm2-tools
 git clone https://github.com/tpm2-software/tpm2-tools.git
 cd tpm2-tools
 ./bootstrap

@@ -68,8 +68,8 @@ pip install tpm2-pytss pycryptodome
 echo "Проверяем подключение к TPM..."
 python -c "
 from tpm2_pytss import FAPI
-info = FAPI().get_info()
-print(f'Success: TPM найден → {info}')
+info = FAPI().get_tpm_info()
+print(f'Success: TPM найден → {info['manufacturer'].decode()}')
 " || { echo "Error: TPM не найден или FAPI не работает"; exit 1; }
 
 # 5. Создаём удобные алиасы в ~/.bashrc (только если их ещё нет)

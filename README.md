@@ -3,14 +3,14 @@ git clone https://github.com/t0ggit/tpmapp
 cd tpmapp
 
 sudo apt update
-sudo apt install python3.10-venv python3.10-dev -y
+sudo apt install python3-pip python3.10-venv python3.10-dev -y
 chmod +x install.sh
 ./install.sh
 ```
 
 
 ```bash
-# Первый раз — создаём диск
+# Сначала создаём диск
 ./app.py create secret_docs
 # → просит PIN (можно просто Enter)
 

@@ -29,14 +29,14 @@ source "$VENV_DIR/bin/activate"
 # 3. Устанавливаем нужные Python-пакеты только внутрь venv
 echo "Устанавливаем tpm2-pytss и pycryptodome через pip..."
 pip install --quiet --upgrade pip > /dev/null
-pip install --quiet tpm2-pytss pycryptodome > /dev/null
+pip install tpm2-pytss pycryptodome
 
 # 4. Проверяем, что FAPI видит твой vTPM
 echo "Проверяем подключение к TPM..."
 python -c "
 from tpm2_pytss import FAPI
-info = FAPI().get_tpm_info()
-print(f'Success: TPM найден → {info['manufacturer'].decode()} (FAPI работает)')
+info = FAPI().get_info()
+print(f'Success: TPM найден → {info}')
 " || { echo "Error: TPM не найден или FAPI не работает"; exit 1; }
 
 # 5. Создаём удобные алиасы в ~/.bashrc (только если их ещё нет)

@@ -17,28 +17,29 @@ sudo DEBIAN_FRONTEND=noninteractive apt install -y \
     pkg-config \
     || { echo "Не удалось установить системные пакеты"; exit 1; }
 
-# 1.1. Устанавливаем ВСЕ зависимости для сборки (теперь полный набор)
+# 1.1. Устанавливаем ВСЕ зависимости (теперь с libjson-c-dev и остальными)
 sudo apt update
-sudo apt install -y autoconf automake libtool pkg-config gcc git libssl-dev autoconf-archive libtool-bin libgcrypt-dev doxygen graphviz
+sudo apt install -y autoconf automake libtool pkg-config gcc git libssl-dev autoconf-archive libtool-bin libgcrypt-dev doxygen graphviz libjson-c-dev libini-config-dev libcurl4-openssl-dev uuid-dev libltdl-dev libusb-1.0-0-dev libftdi-dev uthash-dev
 
-# 1.2. Клонируем и собираем tpm2-tss 4.1.2 (стабильная версия с FAPI 3.0+)
+# 1.2. Клонируем и собираем tpm2-tss 4.1.2
 cd /tmp
-rm -rf tpm2-tss  # очищаем, если был
+rm -rf tpm2-tss
 git clone https://github.com/tpm2-software/tpm2-tss.git
 cd tpm2-tss
 git checkout 4.1.2
 
-# 1.3. Запускаем bootstrap (теперь с полным набором макросов)
+# 1.3. Bootstrap (теперь с json-c пройдёт)
 ./bootstrap
 
-# 1.4. Конфигурируем (без лишних флагов, swtpm поддерживается по умолчанию)
-./configure --prefix=/usr
+# 1.4. Конфигурируем (с флагом для udev, если нужно; swtpm работает по умолчанию)
+./configure --prefix=/usr --with-udevrulesdir=/etc/udev/rules.d
 
 # 1.5. Собираем и устанавливаем
 make -j$(nproc)
 sudo make install
+sudo ldconfig  # обновляем библиотеки
 
-# 1.6. Собираем обновлённые tpm2-tools (опционально, но рекомендуется)
+# 1.6. Собираем обновлённые tpm2-tools (опционально)
 cd /tmp
 rm -rf tpm2-tools
 git clone https://github.com/tpm2-software/tpm2-tools.git
@@ -47,6 +48,7 @@ cd tpm2-tools
 ./configure --prefix=/usr
 make -j$(nproc)
 sudo make install
+sudo ldconfig
 
 # 2. Создаём изолированное виртуальное окружение в домашней папке
 VENV_DIR="$PWD/tpmapp_venv"

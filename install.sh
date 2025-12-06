@@ -66,11 +66,12 @@ make -j"$(nproc)"
 sudo make install
 sudo ldconfig
 
-echo "8) Сборка tpm2-tools 3.2.3"
+echo "8) Сборка tpm2-tools 5.5"
 cd "$BUILD_BASE"
 git clone https://github.com/tpm2-software/tpm2-tools.git
 cd tpm2-tools
-git checkout 3.2.3
+git checkout 5.5
+
 ./bootstrap
 mkdir -p build
 cd build

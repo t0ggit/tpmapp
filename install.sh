@@ -40,11 +40,15 @@ sudo make install
 sudo ldconfig
 
 # Проверка, что FAPI реально собрался
-if ! ldconfig -ltss2-fapi 2>/dev/null | grep -q "libtss2-fapi.so"; then
-  echo "ОШИБКА: libtss2-fapi.so не найден! Что-то пошло не так."
-  exit 1
+echo "Проверяем, что FAPI действительно установился..."
+if [ -f "/usr/lib/x86_64-linux-gnu/libtss2-fapi.so.1" ] || \
+   || [ -f "/usr/lib/x86_64-linux-gnu/libtss2-fapi.so" ] \
+   || ldconfig -p | grep -q libtss2-fapi; then
+    echo "libtss2-fapi успешно установлен и виден системе"
+else
+    echo "ОШИБКА: libtss2-fapi.so не найден даже после установки"
+    exit 1
 fi
-echo "libtss2-fapi успешно установлен"
 
 # 4) Собираем tpm2-tools 5.7 (последняя стабильная на декабрь 2025)
 echo "4) Собираем tpm2-tools 5.7"

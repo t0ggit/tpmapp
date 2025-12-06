@@ -1,119 +1,120 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "=== Установка TPM2-TSS 3.0.0 + FAPI + tpm2-tools 4.0.1 + tpm2-pytss 2.3.0 ==="
+echo "=== Установка TPM2-TSS 3.2.1 + FAPI + tpm2-tools 5.7 + tpm2-pytss 2.3.0 (рабочая связка 2025) ==="
 
 VENV_DIR="$HOME/tpmapp_venv"
-BUILD_BASE="/tmp/tpm2-src"
+BUILD_BASE="/tmp/tpm2-build-$$"
 
-echo "1) Удаление любых старых tpm2-tss/tpm2-tools/libtss2"
-sudo apt remove --purge -y tpm2-tools tpm2-tss libtss2-* || true
-sudo rm -f /usr/lib/x86_64-linux-gnu/libtss2-*.so*
-sudo rm -f /usr/local/lib/libtss2-*.so*
+# 1) Полная зачистка старого хлама
+echo "1) Удаляем старые пакеты и библиотеки tpm2-*"
+sudo apt remove --purge -y tpm2-tools tpm2-abrmd tpm2-tss libtss2-* || true
+sudo rm -rf /usr/local/lib/libtss2* /usr/lib/x86_64-linux-gnu/libtss2* || true
 sudo ldconfig || true
 
-echo "2) Зависимости"
+# 2) Установка всех зависимостей
+echo "2) Устанавливаем зависимости"
 sudo apt update
 sudo apt install -y \
-  autoconf-archive \
-  libcmocka0 \
-  libcmocka-dev \
-  procps \
-  iproute2 \
-  build-essential \
-  git \
-  pkg-config \
-  gcc \
-  libtool \
-  automake \
-  libssl-dev \
-  uthash-dev \
-  autoconf \
-  doxygen \
-  libjson-c-dev \
-  libini-config-dev \
-  libcurl4-openssl-dev \
-  uuid-dev \
-  libltdl-dev \
-  libusb-1.0-0-dev \
-  libftdi-dev \
+  autoconf-archive pkg-config libtool automake gcc make git \
+  libcmocka0 libcmocka-dev \
+  build-essential doxygen \
+  libssl-dev uthash-dev libjson-c-dev libini-config-dev \
+  libcurl4-openssl-dev uuid-dev libusb-1.0-0-dev \
   swtpm swtpm-tools \
-  python3-venv python3-dev python3-pip \
-  jq
+  python3-venv python3-dev python3-pip jq
 
-echo "3) Скачивание и сборка tpm2-tss 3.0.0"
+# 3) Собираем tpm2-tss 3.2.1 с включённым FAPI
+echo "3) Собираем tpm2-tss 3.2.1 (с FAPI)"
 rm -rf "$BUILD_BASE"
 mkdir -p "$BUILD_BASE"
 cd "$BUILD_BASE"
 
 git clone https://github.com/tpm2-software/tpm2-tss.git
 cd tpm2-tss
-git checkout 3.0.0
-
+git checkout 3.2.1
 ./bootstrap
-./configure --prefix=/usr --with-fapi
+./configure --prefix=/usr --enable-fapi
 make -j"$(nproc)"
 sudo make install
 sudo ldconfig
 
-echo "Проверка наличия libtss2-fapi..."
-if ! ldconfig -p | grep -q libtss2-fapi; then
-  echo "ОШИБКА: FAPI не установлен!"
+# Проверка, что FAPI реально собрался
+if ! ldconfig -ltss2-fapi 2>/dev/null | grep -q "libtss2-fapi.so"; then
+  echo "ОШИБКА: libtss2-fapi.so не найден! Что-то пошло не так."
   exit 1
 fi
+echo "libtss2-fapi успешно установлен"
 
-echo "4) Скачивание и сборка tpm2-tools 4.0.1 (совместимые с TSS 3.0.0)"
+# 4) Собираем tpm2-tools 5.7 (последняя стабильная на декабрь 2025)
+echo "4) Собираем tpm2-tools 5.7"
 cd "$BUILD_BASE"
 git clone https://github.com/tpm2-software/tpm2-tools.git
 cd tpm2-tools
-git checkout 4.0.1
-
+git checkout 5.7
 ./bootstrap
-mkdir build
-cd build
-../configure --prefix=/usr --with-tcti=swtpm
+./configure --prefix=/usr
 make -j"$(nproc)"
 sudo make install
 sudo ldconfig
 
-echo "5) Python-venv + tpm2-pytss 2.3.0 (единственная версия с FAPI)"
+echo "tpm2-tools 5.7 установлен"
+
+# 5) Создаём виртуальное окружение и ставим tpm2-pytss 2.3.0
+echo "5) Создаём Python venv и ставим tpm2-pytss 2.3.0"
 rm -rf "$VENV_DIR"
 python3 -m venv "$VENV_DIR"
-
 source "$VENV_DIR/bin/activate"
 pip install --upgrade pip setuptools wheel
 pip install pycryptodome
-
-# Устанавливаем pytss строго 2.3.0
 pip install tpm2-pytss==2.3.0
 
-echo "6) Проверка FAPI через Python"
-python3 <<'EOF'
-from tpm2_pytss import FAPI
-import json
+# 6) Быстрая проверка FAPI из Python
+echo "6) Проверяем работу FAPI через Python"
+python - <<'EOF'
+from tpm2_pytss import FAPI, FAPIConfig
+import os
 try:
-    with FAPI() as f:
-        info = f.GetInfo()
-        try:
-            j = json.loads(info)
-        except:
-            j = {"raw": info}
-        print(json.dumps(j, indent=2, ensure_ascii=False))
+    # Для swtpm FAPI сам найдёт сокет, если переменная не задана
+    with FAPI() as fapi:
+        info = fapi.GetInfo()
+        print("FAPI работает! Версия/инфо:")
+        print(info[:200] + "..." if len(info) > 200 else info)
 except Exception as e:
-    print("Ошибка FAPI:", type(e).__name__, e)
-    raise
+    print("Ошибка FAPI:", e)
+    exit(1)
 EOF
 
-echo "7) Алиасы"
-if ! grep -q "tpmapp_venv" "$HOME/.bashrc"; then
-cat <<'EOF' >> "$HOME/.bashrc"
-alias tpmapp="source ~/tpmapp_venv/bin/activate && echo 'TPM app activated'"
+# 7) Удобные алиасы в .bashrc
+echo "7) Добавляем алиасы в ~/.bashrc"
+if ! grep -q "tpmapp_venv" "$HOME/.bashrc" 2>/dev/null; then
+  cat <<'EOF' >> "$HOME/.bashrc"
+
+# ── TPM2 + FAPI окружение ─────────────────────────────────────
+alias tpmapp="source ~/tpmapp_venv/bin/activate && echo 'TPM venv активирован'"
 alias tpmapp-create="tpmapp && python ~/tpmapp/app.py create"
 alias tpmapp-open="tpmapp && python ~/tpmapp/app.py open"
 alias tpmapp-close="tpmapp && python ~/tpmapp/app.py close"
+alias tpmapp-info="tpmapp && python -c 'from tpm2_pytss import FAPI; print(FAPI().GetInfo())'"
 EOF
+  echo "Алиасы добавлены в ~/.bashrc"
 fi
 
-echo "=== ГОТОВО ==="
-echo "Активировать окружение: source ~/tpmapp_venv/bin/activate"
-echo "Проверить FAPI: python -c 'from tpm2_pytss import FAPI; print(FAPI().GetInfo())'"
+# Финал
+echo ""
+echo "ГОТОВО! Всё собрано и работает"
+echo ""
+echo "Активировать окружение:"
+echo "   source ~/tpmapp_venv/bin/activate   или просто   tpmapp"
+echo ""
+echo "Быстрая проверка FAPI:"
+echo "   tpmapp-info"
+echo ""
+echo "Если хочешь сразу запустить swtpm для тестов:"
+echo "   mkdir -p /tmp/myvtpm && swtpm socket --tpm2 -t -d --tpmstate dir=/tmp/myvtpm --ctrl type=unixio,path=/tmp/myvtpm/swtpm.sock"
+echo "   export TPM2TOOLS_TCTI=\"swtpm:path=/tmp/myvtpm/swtpm.sock\""
+
+# Уборка за собой
+rm -rf "$BUILD_BASE"
+
+exit 0

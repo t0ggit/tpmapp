@@ -3,7 +3,7 @@ set -euo pipefail
 
 echo "=== Установка TPM2-TSS 3.2.3 + FAPI для Ubuntu 22.04 ==="
 
-VENV_DIR="$HOME/tpmapp_venv"
+VENV_DIR="$PWD/tpmapp_venv"
 BUILD_BASE="/tmp/tpm2-src"
 
 echo "1) Удаление старых libtss2*"

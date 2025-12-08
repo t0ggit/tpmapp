@@ -9,6 +9,7 @@ chmod +x install.sh
 ```
 
 
+
 ```bash
 # Сначала создаём диск
 ./app.py create secret_docs
